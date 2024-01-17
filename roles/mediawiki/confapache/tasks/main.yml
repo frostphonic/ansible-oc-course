@@ -1,0 +1,54 @@
+---
+- name: "add user-ansible"
+  command:
+    usermod -a -G www-data user-ansible
+
+- name: "mediawiki directory"
+  file:
+    path: "{{mediawiki-directory}}"
+    owner: "www-data"
+    group: "www-data"
+    state: directory
+
+- name: "uncompress mediawiki archives"
+  unarchive:
+    src: "{{mediawiki_archive_url}}"
+    dest: "{{mediawiki_directory}}"
+    owner: "www-data"
+    group: "www-data"
+    remote_src: yes
+    extra_opts: --transform=s/mediawiki-[0-9\.]*\///
+
+- name: "add g+w répertoire mediawiki"
+  command:
+    chmod -R g+w {{mediawiki_directory}}
+
+- name: "mediawiki configuration"
+  become: yes
+  become_user: "user-ansible"
+  args:
+    creates: "{{mediawiki_directory}}/LocalSettings.php"
+    chdir: "{{mediawiki_maintenance_directory}}"
+  command:
+    php install.php --scriptpath /{{mediawiki_name}}
+    --dbname mediawiki --lang fr
+    --dbuser {{mediawiki_db_user}}
+    --dbpass {{mediawiki_db_password}}
+    --pass {{mediawiki_admin_password}}
+    --dbserver {{mediawiki_db_host}}
+    --server http://http1
+    {{mediawiki_title}} {{mediawiki_admin_user}}
+  run_once: yes
+  delegate_to: "{{item}}"
+  with_items: "{{groups.apache}}"
+
+- name: "mediawiki db update"
+  become: yes
+  become_user: "user-ansible"
+  command:
+    php update.php --quick
+  args:
+    chdir: "{{mediawiki_maintenance_directory}}"
+  run_once: yes
+  register: resultat
+  changed_when: "' ...done.' in resultat.stdout"
